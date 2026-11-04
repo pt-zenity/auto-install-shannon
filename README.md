@@ -40,33 +40,37 @@ sudo ./auto-install-shannon.sh
 # Build image
 docker build -t shannon-ready .
 
-# Jalankan (--privileged diperlukan untuk Docker-in-Docker)
-docker run -it --privileged \
+# Jalankan (mount Docker socket dari host, tanpa --privileged)
+docker run -it \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -e SHANNON_AI_API_KEY=your-api-key \
   -e SHANNON_AI_MODEL=anthropic:claude-sonnet-4-6 \
   shannon-ready
 
 # Dengan Kagiro
-docker run -it --privileged \
+docker run -it \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -e SHANNON_AI_API_KEY=kagiro-your-key \
   -e SHANNON_AI_MODEL=anthropic:claude-haiku-5-5 \
   -e SHANNON_AI_BASE_URL=https://api.kagiro.net \
   shannon-ready
 
 # Mount target repo untuk scanning
-docker run -it --privileged \
+docker run -it \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -e SHANNON_AI_API_KEY=your-api-key \
   -v /path/to/target-repo:/home/shannon/target:ro \
   -v shannon-workspaces:/home/shannon/shannon/workspaces \
   shannon-ready \
   ./shannon start -u https://target.com -r /home/shannon/target
-
-# Alternatif: mount Docker socket dari host (tanpa --privileged)
-docker run -it \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e SHANNON_AI_API_KEY=your-api-key \
-  shannon-ready
 ```
+
+### Deploy via ServerKit
+
+1. Buat app Docker di ServerKit, hubungkan ke repo `pt-zenity/auto-install-shannon`
+2. Tambahkan volume: `/var/run/docker.sock:/var/run/docker.sock`
+3. Set environment variables: `SHANNON_AI_API_KEY`, `SHANNON_AI_MODEL`, `SHANNON_AI_BASE_URL`
+4. Deploy
 
 ## Setelah Instalasi
 
@@ -96,7 +100,7 @@ cd ~/shannon
 - Akses root atau sudo
 
 **Docker:**
-- Docker 20.10+ dengan `--privileged` support
+- Docker 20.10+ di host (container mount socket, bukan DinD)
 - RAM minimal 4GB
 - API key dari AI provider yang didukung
 
