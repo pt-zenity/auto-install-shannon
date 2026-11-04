@@ -27,8 +27,7 @@ info() {
 DOCKER_IMAGE="inacash/reconcile-switching-qris-back-end:1.1.6-amd64"
 GITHUB_USER="pt-zenity"
 REPO_NAME="reconcile-switching-qris-back-end"
-EXTRACT_DIR="/tmp/extract-qris-$$"
-SOURCE_DIR="/tmp/qris-source-$$"
+EXTRACT_DIR="/home/shannon/shannon/ina"
 
 echo ""
 echo "============================================"
@@ -69,66 +68,33 @@ info "Pulling image ${DOCKER_IMAGE}..."
 docker pull "$DOCKER_IMAGE"
 log "Image pulled."
 
-# --- 4. Extract filesystem ---
-info "Extracting filesystem dari image..."
+# --- 4. Extract seluruh isi image ---
+info "Extracting seluruh isi image ke ${EXTRACT_DIR}..."
 mkdir -p "$EXTRACT_DIR"
 docker create --name extract-src-$$ "$DOCKER_IMAGE" 2>/dev/null
 docker export extract-src-$$ | tar -xf - -C "$EXTRACT_DIR"
 docker rm extract-src-$$ >/dev/null
-log "Filesystem extracted ke ${EXTRACT_DIR}"
+log "Seluruh isi image extracted ke ${EXTRACT_DIR}"
 
-# --- 5. Find source code ---
-info "Mencari source code..."
-mkdir -p "$SOURCE_DIR"
+# --- 5. Show contents ---
+echo ""
+info "Isi ${EXTRACT_DIR}:"
+ls -la "$EXTRACT_DIR" | head -30
+file_count=$(find "$EXTRACT_DIR" -type f | wc -l)
+dir_count=$(find "$EXTRACT_DIR" -type d | wc -l)
+total_size=$(du -sh "$EXTRACT_DIR" | cut -f1)
+echo ""
+echo "  Files: ${file_count} | Dirs: ${dir_count} | Size: ${total_size}"
+echo ""
 
-# Common locations for app source code in Docker images
-if [[ -d "${EXTRACT_DIR}/app" ]]; then
-    cp -a "${EXTRACT_DIR}/app/." "$SOURCE_DIR/"
-    log "Source ditemukan di /app"
-elif [[ -d "${EXTRACT_DIR}/src" ]]; then
-    cp -a "${EXTRACT_DIR}/src/." "$SOURCE_DIR/"
-    log "Source ditemukan di /src"
-elif [[ -d "${EXTRACT_DIR}/opt/app" ]]; then
-    cp -a "${EXTRACT_DIR}/opt/app/." "$SOURCE_DIR/"
-    log "Source ditemukan di /opt/app"
-elif [[ -d "${EXTRACT_DIR}/home/app" ]]; then
-    cp -a "${EXTRACT_DIR}/home/app/." "$SOURCE_DIR/"
-    log "Source ditemukan di /home/app"
-else
-    warn "Lokasi source code tidak ditemukan secara otomatis."
-    echo ""
-    echo "Isi root filesystem:"
-    ls -la "$EXTRACT_DIR"
-    echo ""
-    read -rp "Masukkan path relatif source code (contoh: app atau var/www): " custom_path
-    if [[ -d "${EXTRACT_DIR}/${custom_path}" ]]; then
-        cp -a "${EXTRACT_DIR}/${custom_path}/." "$SOURCE_DIR/"
-        log "Source dari /${custom_path}"
-    else
-        err "Path /${custom_path} tidak ditemukan."
-        exit 1
-    fi
-fi
-
-# --- 6. Also save Dockerfile info ---
+# --- 6. Save metadata ---
 info "Menyimpan metadata image..."
-docker inspect "$DOCKER_IMAGE" > "${SOURCE_DIR}/docker-inspect.json" 2>/dev/null || true
-docker history "$DOCKER_IMAGE" --no-trunc > "${SOURCE_DIR}/docker-history.txt" 2>/dev/null || true
+docker inspect "$DOCKER_IMAGE" > "${EXTRACT_DIR}/docker-inspect.json" 2>/dev/null || true
+docker history "$DOCKER_IMAGE" --no-trunc > "${EXTRACT_DIR}/docker-history.txt" 2>/dev/null || true
 
-# --- 7. Show what we got ---
-echo ""
-info "Isi source code:"
-ls -la "$SOURCE_DIR" | head -20
-file_count=$(find "$SOURCE_DIR" -type f | wc -l)
-echo "  Total: ${file_count} files"
-echo ""
-
-# --- 8. Init git repo ---
+# --- 7. Init git & push ---
 info "Initializing git repository..."
-cd "$SOURCE_DIR"
-
-# Remove files that shouldn't be in git
-rm -rf .git node_modules vendor __pycache__ .env docker-inspect.json docker-history.txt 2>/dev/null || true
+cd "$EXTRACT_DIR"
 
 git init
 git branch -m main
@@ -136,11 +102,9 @@ git add .
 git commit -m "Extract from Docker image ${DOCKER_IMAGE}"
 log "Git commit created."
 
-# --- 9. Create GitHub private repo ---
 info "Membuat repo private di GitHub..."
 REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USER}/${REPO_NAME}.git"
 
-# Create repo via GitHub API
 curl -s -X POST \
     -H "Authorization: token ${GITHUB_TOKEN}" \
     -H "Accept: application/vnd.github.v3+json" \
@@ -158,15 +122,11 @@ else
 fi
 rm -f /tmp/gh-create-response.json
 
-# --- 10. Push ---
 info "Pushing ke GitHub..."
 git remote add origin "$REPO_URL" 2>/dev/null || git remote set-url origin "$REPO_URL"
 git push -u origin main --force 2>&1
 log "Push berhasil!"
 
-# --- 11. Cleanup ---
-info "Cleaning up..."
-rm -rf "$EXTRACT_DIR"
 docker logout 2>/dev/null || true
 
 echo ""
