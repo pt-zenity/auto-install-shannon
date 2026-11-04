@@ -25,15 +25,41 @@ Script otomatis untuk menginstal [Shannon AI Pentester](https://github.com/Keygr
 | Kagiro (OpenAI) | `openai:<model>` via `api.kagiro.net/v1` |
 | Custom | Any Pi harness provider |
 
-## Quick Start
+## Quick Start — Script
 
 ```bash
-# Download script
+# Download dan jalankan
 wget https://raw.githubusercontent.com/pt-zenity/auto-install-shannon/main/auto-install-shannon.sh
 chmod +x auto-install-shannon.sh
-
-# Jalankan sebagai root
 sudo ./auto-install-shannon.sh
+```
+
+## Quick Start — Docker
+
+```bash
+# Build image
+docker build -t shannon-ready .
+
+# Jalankan (--privileged diperlukan untuk Docker-in-Docker)
+docker run -it --privileged \
+  -e SHANNON_AI_API_KEY=your-api-key \
+  -e SHANNON_AI_MODEL=anthropic:claude-sonnet-4-6 \
+  shannon-ready
+
+# Dengan Kagiro
+docker run -it --privileged \
+  -e SHANNON_AI_API_KEY=kagiro-your-key \
+  -e SHANNON_AI_MODEL=anthropic:claude-haiku-5-5 \
+  -e SHANNON_AI_BASE_URL=https://api.kagiro.net \
+  shannon-ready
+
+# Mount target repo untuk scanning
+docker run -it --privileged \
+  -e SHANNON_AI_API_KEY=your-api-key \
+  -v /path/to/target-repo:/home/shannon/target:ro \
+  -v shannon-workspaces:/home/shannon/shannon/workspaces \
+  shannon-ready \
+  ./shannon start -u https://target.com -r /home/shannon/target
 ```
 
 ## Setelah Instalasi
@@ -56,11 +82,17 @@ cd ~/shannon
 
 ## Requirements
 
+**Script:**
 - Ubuntu 24.04 LTS (x86_64 atau aarch64)
 - RAM minimal 4GB (rekomendasi 8GB+)
 - Disk minimal 10GB tersedia
 - Koneksi internet
 - Akses root atau sudo
+
+**Docker:**
+- Docker 20.10+ dengan `--privileged` support
+- RAM minimal 4GB
+- API key dari AI provider yang didukung
 
 ## Referensi
 
