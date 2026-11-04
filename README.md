@@ -60,6 +60,12 @@ docker run -it --privileged \
   -v shannon-workspaces:/home/shannon/shannon/workspaces \
   shannon-ready \
   ./shannon start -u https://target.com -r /home/shannon/target
+
+# Alternatif: mount Docker socket dari host (tanpa --privileged)
+docker run -it \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e SHANNON_AI_API_KEY=your-api-key \
+  shannon-ready
 ```
 
 ## Setelah Instalasi

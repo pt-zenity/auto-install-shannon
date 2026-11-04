@@ -26,6 +26,12 @@
 #     -v /path/to/target-repo:/home/shannon/target:ro \
 #     shannon-ready \
 #     ./shannon start -u https://target.com -r /home/shannon/target
+#
+# Alternative: mount host Docker socket (no --privileged needed):
+#   docker run -it \
+#     -v /var/run/docker.sock:/var/run/docker.sock \
+#     -e SHANNON_AI_API_KEY=your-api-key \
+#     shannon-ready
 # =============================================================================
 
 # --- Stage 1: Build ---
@@ -78,7 +84,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     lsb-release \
     sudo \
+    iptables \
     && rm -rf /var/lib/apt/lists/*
+
+# Switch iptables to legacy mode — nf_tables backend fails inside containers
+# because the kernel nftables API requires privileges most container runtimes
+# don't grant, even with --privileged on older kernels
+RUN update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true \
+    && update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
 
 # Install Docker CLI + Compose plugin (Shannon needs Docker to run worker containers)
 RUN install -m 0755 -d /etc/apt/keyrings \

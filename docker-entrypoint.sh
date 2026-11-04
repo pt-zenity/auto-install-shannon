@@ -17,8 +17,11 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+RED='\033[0;31m'
+
 log()  { echo -e "${GREEN}[✓]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!]${NC} $*"; }
+err()  { echo -e "${RED}[✗]${NC} $*"; }
 info() { echo -e "${CYAN}[i]${NC} $*"; }
 
 # --- 1. Start Docker daemon (DinD) ---
@@ -28,22 +31,87 @@ start_docker() {
         return
     fi
 
+    # Ensure iptables-legacy is used (nf_tables fails inside most containers)
+    if command -v update-alternatives &>/dev/null; then
+        update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
+        update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
+    fi
+
+    # Try starting Docker daemon — attempt 1: normal mode
     info "Starting Docker daemon..."
     dockerd > /var/log/dockerd.log 2>&1 &
+    local dockerd_pid=$!
 
-    # Wait for Docker to be ready (max 30s)
     local waited=0
-    while [[ $waited -lt 30 ]]; do
+    while [[ $waited -lt 15 ]]; do
         if docker info &>/dev/null; then
             log "Docker daemon ready."
             return
+        fi
+        # Check if dockerd already exited (crashed)
+        if ! kill -0 "$dockerd_pid" 2>/dev/null; then
+            break
         fi
         sleep 1
         waited=$((waited + 1))
     done
 
-    echo "ERROR: Docker daemon gagal start. Log:"
-    tail -20 /var/log/dockerd.log
+    # If first attempt failed, try with --iptables=false (no NAT, uses host networking)
+    if ! docker info &>/dev/null; then
+        warn "Docker normal mode gagal. Mencoba dengan --iptables=false..."
+        kill "$dockerd_pid" 2>/dev/null || true
+        sleep 2
+
+        dockerd --iptables=false > /var/log/dockerd.log 2>&1 &
+        dockerd_pid=$!
+
+        waited=0
+        while [[ $waited -lt 15 ]]; do
+            if docker info &>/dev/null; then
+                log "Docker daemon ready (iptables disabled, gunakan --network=host pada container)."
+                return
+            fi
+            if ! kill -0 "$dockerd_pid" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+            waited=$((waited + 1))
+        done
+    fi
+
+    # If still failed, try with full storage driver fallback
+    if ! docker info &>/dev/null; then
+        warn "Mencoba dengan storage driver vfs..."
+        kill "$dockerd_pid" 2>/dev/null || true
+        sleep 2
+
+        dockerd --iptables=false --storage-driver=vfs > /var/log/dockerd.log 2>&1 &
+        dockerd_pid=$!
+
+        waited=0
+        while [[ $waited -lt 15 ]]; do
+            if docker info &>/dev/null; then
+                log "Docker daemon ready (vfs storage, iptables disabled)."
+                return
+            fi
+            if ! kill -0 "$dockerd_pid" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+            waited=$((waited + 1))
+        done
+    fi
+
+    echo ""
+    err "Docker daemon gagal start setelah semua fallback."
+    err "Log terakhir:"
+    tail -5 /var/log/dockerd.log
+    echo ""
+    err "Pastikan container dijalankan dengan --privileged:"
+    err "  docker run -it --privileged shannon-ready"
+    echo ""
+    err "Atau mount Docker socket dari host:"
+    err "  docker run -it -v /var/run/docker.sock:/var/run/docker.sock shannon-ready"
     exit 1
 }
 
